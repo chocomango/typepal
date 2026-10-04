@@ -24,7 +24,9 @@ const spells = [
   {id:'tide',word:'tide',icon:'≈',name:'Gentle tide',color:'#dcefeb',ink:'#41766b',description:'Move every monster back by 120 pixels.',key:'4'},
   {id:'bloom',word:'bloom',icon:'✿',name:'Garden wish',color:'#f5dfe7',ink:'#9a5c72',description:'Restore one heart.',key:'5'}
 ];
-let state, last = 0, sound = false, audio;
+let state, last = 0, sound = false, audio, lastTone = -100;
+let guideReturn=null;
+try { sound = localStorage.getItem('puffpals-sound') === 'on'; } catch {}
 let best = {time:0,level:1,words:0};
 let collection = {unlocked:['little'],equipped:'little'};
 try {
@@ -61,9 +63,44 @@ function checkMilestones(){
   for(const m of earned){collection.unlocked.push(m.id);state.earned.push(m.id);}
   const newest=earned[earned.length-1];collection.equipped=newest.id;
   best.time=Math.max(best.time,Math.floor(state.time));save();records();applyLook();renderCollection();
-
+  const note=document.createElement('div');note.className='achievement-toast';
+  note.innerHTML=`<span>${newest.icon}</span><div><small>A FOREVER TREASURE</small><strong>${newest.title}</strong><span>${newest.look} is yours. Keep going, little pal!</span></div>`;
+  note.addEventListener?.('animationend',()=>note.remove(),{once:true});$('arena').append(note);tone(880,.2);
 }
-function tone(freq=600){if(!sound)return;try{audio ||= new (window.AudioContext || window.webkitAudioContext)();const o=audio.createOscillator(),g=audio.createGain();o.connect(g);g.connect(audio.destination);o.frequency.value=freq;g.gain.setValueAtTime(.04,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.16);o.start();o.stop(audio.currentTime+.17);}catch{}}
+function tone(freq=600,duration=.1){
+  if(!sound)return;const now=performance.now();if(now-lastTone<25)return;lastTone=now;
+  try{audio ||= new (window.AudioContext || window.webkitAudioContext)();if(audio.state==='suspended')audio.resume()?.catch(()=>{});const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.connect(g);g.connect(audio.destination);o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(freq*.82,audio.currentTime+duration);g.gain.setValueAtTime(.001,audio.currentTime);g.gain.exponentialRampToValueAtTime(.026,audio.currentTime+.008);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+duration);o.onended=()=>{o.disconnect();g.disconnect();};o.start();o.stop(audio.currentTime+duration+.01);}catch{}
+}
+function renderSound(){
+  $('sound-button').setAttribute('aria-pressed',String(sound));$('sound-button').setAttribute('aria-label',sound?'Disable sound':'Enable sound');$('sound-button').innerHTML=`♪ <span>Sound ${sound?'on':'off'}</span>`;
+}
+function openGuide(){
+  const inStory=!$('story').hidden,inGame=Boolean(state&&!$('game').hidden&&state.mode!=='menu');
+  const storyPlaying=inStory&&typeof stroll!=='undefined'&&stroll&&!stroll.paused&&!stroll.finished;
+  guideReturn={game:state?.mode==='playing',story:Boolean(storyPlaying),inStory,inGame,focus:document.activeElement};
+  if(guideReturn.game)pause();if(guideReturn.story)toggleStrollPause();
+  $('guide-play').textContent=inStory?'Back to your story ↗':inGame?'Back to your adventure ↗':'Got it. Let’s play Typefall ↗';
+  $('how-dialog').showModal();
+}
+function returnFromGuide(){
+  const returning=guideReturn;guideReturn=null;if(!returning)return;
+  if(returning.game&&state?.mode==='paused')resume();
+  if(returning.story&&typeof stroll!=='undefined'&&stroll?.paused&&!stroll.finished&&!$('story').hidden)toggleStrollPause();
+  else returning.focus?.focus?.();
+}
+function closeGuide(){$('how-dialog').close();returnFromGuide();}
+function celebrateFriend(c){
+  const width=Number.parseFloat(c.el.style.width)||120;
+  for(let i=0;i<4;i++){
+    const particle=document.createElement('span');particle.className=`particle${i===3?' xp-particle':''}`;
+    particle.textContent=i===3?'+3 friendship':['✦','♡','✧'][i];
+    particle.style.left=`${c.x+width/2-12}px`;particle.style.top=`${c.y+28}px`;
+    particle.style.color=c.spell?spells.find(s=>s.id===c.spell).ink:'#a08ab6';
+    particle.style.setProperty('--dx',`${(i-1.5)*24}px`);particle.style.setProperty('--dy',`${-30-i*10}px`);
+    particle.addEventListener?.('animationend',()=>particle.remove(),{once:true});$('effects').append(particle);
+  }
+  state.smileUntil=state.time+.65;$('game-puff').classList.add('happy');
+}
 function spellStatus(text){$('spell-message').textContent=text;}
 function renderSpells(){
   $('spell-list').innerHTML=spells.map(spell=>{
@@ -74,7 +111,7 @@ function renderSpells(){
 }
 function start(){
   state={mode:'playing',time:0,level:1,xp:0,need:18,cleared:0,hearts:3,creatures:[],target:null,spawn:.6,spawnCount:0,frozen:0,slow:0,earned:[],usedWords:new Set(),inventory:Object.fromEntries(spells.map(spell=>[spell.id,0]))};
-  $('menu').hidden=true;$('game').hidden=false;$('overlay').hidden=true;$('word-layer').replaceChildren();$('game-puff').className='puff game-puff';spellStatus('Collect colored words. Cast with 1–5 or click a spell.');applyLook();renderSpells();hud();last=performance.now();
+  $('menu').hidden=true;$('story').hidden=true;$('game').hidden=false;$('overlay').hidden=true;$('word-layer').replaceChildren();$('effects').replaceChildren();$('arena').querySelectorAll('.achievement-toast').forEach(note=>note.remove());$('game-puff').className='puff game-puff';spellStatus('Collect colored words. Cast with 1–5 or click a spell.');applyLook();renderSpells();hud();last=performance.now();
 }
 function wave(){return Math.floor(state.time/40)+1;}
 function resting(){return state.time%40>=35;}
@@ -134,10 +171,11 @@ function spawn(forcedKind){
   const c={word,spell:special?.id||null,el,lane,x:lane*layout.width+6,y:0,typed:0};
   el.style.width=`${layout.width-12}px`;$('word-layer').append(el);state.creatures.push(c);render(c);return c;
 }
-function render(c){c.el.style.transform=`translate(${c.x}px,${c.y}px)`;c.el.classList.toggle('target',state.target===c);c.el.querySelector('.word-label').innerHTML=`${c.spell?'<span class="spell-word-mark" aria-label="Collectible spell">✦</span> ':''}<span class="typed">${c.word.slice(0,c.typed)}</span><span class="remaining">${c.word.slice(c.typed)}</span>`;}
+function render(c){c.el.style.transform=`translate(${c.x}px,${c.y}px)`;c.el.classList.toggle('target',state.target===c);c.el.classList.toggle('error',state.time<c.errorUntil);c.el.querySelector('.word-label').innerHTML=`${c.spell?'<span class="spell-word-mark" aria-label="Collectible spell">✦</span> ':''}<span class="typed">${c.word.slice(0,c.typed)}</span><span class="remaining">${c.word.slice(c.typed)}</span>`;}
 function remove(c){c.el.remove();state.creatures=state.creatures.filter(x=>x!==c);if(state.target===c)state.target=null;}
 function sendHome(c){
   if(!state.creatures.includes(c))return;
+  celebrateFriend(c);
   remove(c);state.cleared++;state.xp+=3;
   if(c.spell){
     state.inventory[c.spell]++;
@@ -183,6 +221,7 @@ function pause(){if(!state)return;if(state.mode==='paused'){resume();return;}if(
 function update(dt){
   if(state?.mode!=='playing')return;
   state.time+=dt;checkMilestones();
+  $('game-puff').classList.toggle('happy',state.time<(state.smileUntil||0));
   // All monsters share the same motion, preserving their lane spacing.
   const movingTime=Math.max(0,dt-state.frozen);
   const slowedTime=Math.min(movingTime,Math.max(0,state.slow-state.frozen));
@@ -206,7 +245,7 @@ function tick(now){const dt=Math.max(0,Math.min((now-last)/1000,.05));last=now;u
 document.addEventListener('keydown',e=>{
   if(!$('story').hidden||$('how-dialog').open)return;
   if(e.key==='Escape'){e.preventDefault();pause();return;}
-  if(state?.mode!=='playing'||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(state?.mode!=='playing'||e.ctrlKey||e.metaKey||e.altKey||e.isComposing)return;
   const spell=spells.find(spell=>spell.key===e.key);
   if(spell){e.preventDefault();castSpell(spell.id);return;}
   if(e.key==='Backspace'){e.preventDefault();if(state.target){state.target.typed=0;const c=state.target;state.target=null;render(c);}return;}
@@ -225,9 +264,10 @@ document.addEventListener('keydown',e=>{
   if(!state.target)state.target=visible.find(c=>c.word[0]===key)||null;
   const c=state.target;if(!c)return;
   if(c.word[c.typed]===key){c.typed++;tone(400+c.typed*40);if(c.typed===c.word.length)sendHome(c);else render(c);}
+  else{c.errorUntil=state.time+.2;render(c);}
 });
-$('play-button').onclick=start;$('guide-play').onclick=()=>{$('how-dialog').close();start();};$('how-button').onclick=()=>$('how-dialog').showModal();$('close-how').onclick=()=>$('how-dialog').close();$('pause-button').onclick=pause;
-$('sound-button').onclick=()=>{sound=!sound;$('sound-button').setAttribute('aria-pressed',sound);$('sound-button').setAttribute('aria-label',sound?'Disable sound':'Enable sound');$('sound-button').innerHTML=`♪ <span>Sound ${sound?'on':'off'}</span>`;tone();};
+$('play-button').onclick=start;$('guide-play').onclick=()=>{const continueAdventure=guideReturn?.inStory||guideReturn?.inGame;closeGuide();if(!continueAdventure)start();};$('how-button').onclick=openGuide;$('close-how').onclick=closeGuide;$('how-dialog').onclose=returnFromGuide;$('how-dialog').oncancel=event=>{event.preventDefault();closeGuide();};$('pause-button').onclick=pause;
+$('sound-button').onclick=()=>{sound=!sound;try{localStorage.setItem('puffpals-sound',sound?'on':'off');}catch{}renderSound();tone();};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state?.mode==='playing')pause();});
 window.addEventListener('resize',resizeLanes);
-records();renderCollection();applyLook();renderSpells();requestAnimationFrame(tick);
+records();renderCollection();applyLook();renderSpells();renderSound();requestAnimationFrame(tick);

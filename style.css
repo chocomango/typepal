@@ -26,3 +26,11 @@
 @keyframes story-walk{0%,100%{translate:0 0;rotate:-3deg}50%{translate:0 -8px;rotate:3deg}}@keyframes story-rest{0%,100%{translate:0 0}50%{translate:0 -4px}}@keyframes story-feet{0%,100%{rotate:-8deg}50%{rotate:8deg}}
 @media(max-width:850px){.story-layout{grid-template-columns:minmax(0,1.5fr) minmax(240px,1fr);gap:16px}.story-reader{padding:22px;min-height:340px}.story-passage{font-size:22px}.story-stage .story-journey{height:305px}.story-stage .story-puff{transform:scale(.6)}}@media(max-width:650px){.story-layout{grid-template-columns:1fr;gap:14px}.story-reader{min-height:280px;padding:22px}.story-passage{font-size:22px}.snippet-heading{font-size:7px;letter-spacing:1px}.story-stage{padding-top:16px}.story-stage .story-journey{height:175px}.story-stage .journey-sky{padding-top:15px}.story-stage .story-puff{bottom:59px;transform:scale(.55)}.story-stage .journey-path{bottom:22px}.story-stage .journey-stops{bottom:30px}.story-scene-caption{padding:12px}.story-scene-caption p{display:none}.story-writing .story-instructions{margin-bottom:0}}
 @media(prefers-reduced-motion:reduce){.story-stage .story-puff,.story-stage[data-motion="walking"] .story-puff,.story-stage[data-motion="walking"] .puff-feet{animation:none}.story-puff{transition:none}}
+
+/* Small rewards stay out of the way of the next word. */
+#effects{pointer-events:none;z-index:4}
+.word.creature.error .word-label{border-color:#cfa5b1;background:#f6e8ec;transition:background .15s,border-color .15s}
+.achievement-toast{animation:treasure-reveal 3.2s ease both}
+@keyframes treasure-reveal{0%{opacity:0;transform:translate(-50%,-8px)}10%,80%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-4px)}}
+@media(prefers-reduced-motion:reduce){.particle{animation:quiet-reward .65s linear forwards}.achievement-toast{animation:quiet-reward 3.2s linear forwards;transform:translateX(-50%)}.word.creature.error .word-label{transition:none}}
+@keyframes quiet-reward{0%,75%{opacity:1}100%{opacity:0}}
